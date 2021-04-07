@@ -1,0 +1,8 @@
+v 3
+d robreg: Stata module providing robust regression estimators
+d 
+d Author: Ben Jann, University of Bern, ben.jann@soz.unibe.ch
+d
+d Distribution-Date: 20210407
+f robreg.ado
+f robreg.sthlp
