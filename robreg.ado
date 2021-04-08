@@ -3286,7 +3286,7 @@ real scalar rr_lqs_s0(string scalar cmd, real scalar c, real scalar h, real scal
 struct rr_fit scalar _rr_lts(real colvector y0, real matrix X0, real colvector w,
     struct rr scalar S)
 {
-    real scalar    i, j, k, k0, c, q_h, doti, n, null
+    real scalar    i, j, k, k0, c, doti, n, null
     real colvector y, b, b0, e2, h, Indx
     real matrix    X
     transmorphic   t

@@ -21,5 +21,9 @@ Installation from GitHub:
 
 Main changes:
 
+    08apr2021 (version 2.0.1):
+    - robreg lts/lqs/lms now store the h-quantile of squared residuals in e(q_h)
+      (for use by -predict, subset-)
+    
     07apr2021 (version 2.0.0):
     - robreg released on GitHub
