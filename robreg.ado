@@ -1,4 +1,4 @@
-*! version 2.0.0  07apr2021  Ben Jann
+*! version 2.0.1  08apr2021  Ben Jann
 
 capt findfile lmoremata.mlib
 if _rc {
@@ -231,28 +231,8 @@ program Predict
         // subset (lts, lqs, lms)
         if "`opt'"=="subset" {
             qui replace `z' = (`e(depvar)' - `z')^2 if `touse'
-            tempname h
-            if "`subcmd'"=="lms" scalar `h' = .5
-            else                 scalar `h' = e(h)
-            if "`e(wtype)'"!="" {
-                tempvar w
-                qui gen double `w' `e(wexp)' if `touse'
-            }
-            else local w
-            capt assert (`touse'==e(sample))
-            if _rc==1 exit _rc
-            if _rc {
-                tempvar esamp z0
-                qui gen byte `esamp' = e(sample)
-                qui _predict double `z0' if `esamp', xb nolabel
-                qui replace `z0' = (`e(depvar)' - `z0')^2 if `esamp'
-            }
-            else {
-                local esamp `touse'
-                local z0    `z'
-            }
-            mata: rr_predict_subset()
-            gen `typlist' `varlist' = `z' if `touse'
+            gen `typlist' `varlist' = (`z'<=e(q_h)) * `z'^0 if `touse'
+                        // "* z^0" so that missing remains missing
             lab var `varlist' "H subset"
             exit
         }
@@ -990,24 +970,6 @@ mata set matastrict on
 // helper functions called by ado
 /*---------------------------------------------------------------------------*/
 
-// tag subset for LMS, LTS, LQS
-
-void rr_predict_subset()
-{
-    real scalar    c
-    real colvector z, w
-    
-    // step 1: compute threshold base on full sample
-    if (st_local("w")!="") w = st_data(., st_local("w"), st_local("esamp"))
-    else                   w = 1
-    z = st_data(., st_local("z0"), st_local("esamp"))
-    c = mm_quantile(z, w, st_numscalar(st_local("h")))
-    // step 2: evaluate
-    z = st_data(., st_local("z"), st_local("touse"))
-    z = (z:<=c) :* z:^0 // ("* z^0" so that missing remains missing)
-    st_store(., st_local("z"), st_local("touse"), z)
-}
-
 // IFs
 
 void rr_IFs()
@@ -1367,7 +1329,7 @@ struct rr {
     real scalar      kS, effS, b0S
     real matrix      bS
     // additional objects for robreg lms/lqs/lts
-    real scalar      h, h0, c, s0 
+    real scalar      h, q_h, h0, c, s0 
 }
 
 struct rr_fit {
@@ -1737,9 +1699,10 @@ void rr_post(struct rr scalar S)
         st_global("e(title)", strupper(S.cmd)+" regression")
         st_numscalar("e(s0)", S.s0)
         st_numscalar("e(h)", S.h)
-        st_numscalar("e(df_m)",  S.p)
-        st_numscalar("e(df_r)",  S.df)
-        st_numscalar("e(crit)",  S.c)
+        st_numscalar("e(q_h)", S.q_h)
+        st_numscalar("e(crit)", S.c)
+        st_numscalar("e(df_m)", S.p)
+        st_numscalar("e(df_r)", S.df)
         st_numscalar("e(nsamp)", S.nsamp)
         if (S.cmd!="lms") st_numscalar("e(bp)",  S.bp)
         if (S.cmd=="lts") {
@@ -3289,6 +3252,8 @@ struct rr_fit scalar _rr_lqs(real colvector y0, real matrix X0, real colvector w
     f.scale = f.scale * std.ymadn^2
     S.c = f.scale // copy optimization criterion
     S.s0 = rr_lqs_s0(S.cmd, f.scale, S.h, S.N - S.p - S.cons)
+    // store h-quantile of squared residuals
+    S.q_h = mm_quantile((y0 - rr_xb(X0, f.b, S.cons)):^2, w, S.h)
     
     // R-squared (Rousseeuw/Hubert 1997)
     if (S.r2) {
@@ -3321,7 +3286,7 @@ real scalar rr_lqs_s0(string scalar cmd, real scalar c, real scalar h, real scal
 struct rr_fit scalar _rr_lts(real colvector y0, real matrix X0, real colvector w,
     struct rr scalar S)
 {
-    real scalar    i, j, k, k0, c, doti, n, null
+    real scalar    i, j, k, k0, c, q_h, doti, n, null
     real colvector y, b, b0, e2, h, Indx
     real matrix    X
     transmorphic   t
@@ -3422,6 +3387,8 @@ struct rr_fit scalar _rr_lts(real colvector y0, real matrix X0, real colvector w
     f[k].scale = f[k].scale * std.ymadn^2
     S.c = f[k].scale // copy optimization criterion
     S.s0 = rr_lqs_s0(S.cmd, f[k].scale, S.h, S.N - S.p - S.cons)
+    // store h-quantile of squared residuals
+    S.q_h = mm_quantile((y0 - rr_xb(X0, f[k].b, S.cons)):^2, w, S.h)
     
     // R-squared (Rousseeuw/Hubert 1997)
     if (S.r2) {

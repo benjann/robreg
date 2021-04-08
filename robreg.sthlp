@@ -1,5 +1,5 @@
 {smcl}
-{* 07apr2021}{...}
+{* 08apr2021}{...}
 {hi:help robreg}{...}
 {right:{browse "http://github.com/benjann/robreg/"}}
 {hline}
@@ -892,8 +892,9 @@
     invnormal(.5 + #/200) will be classified as inliers. The default is {it:#} = 97.5.
 
 {phang}
-    {opt weights} generates a variable containing the weights from the final
-    RLS fit. {cmd:weights} is only allowed after {cmd:robreg m}, {cmd:robreg s}, and {cmd:robreg mm}.
+    {opt weights} generates a variable containing weights corresponding to the final
+    RLS fit. {cmd:weights} is only allowed after {cmd:robreg m}, {cmd:robreg s}, 
+    and {cmd:robreg mm}.
 
 {phang}
     {opt subset} generates a 0/1 variable identifying the H-subset. The variable
@@ -1016,6 +1017,7 @@
 {synopt:{cmd:e(effS)}}gaussian efficiency of S estimate ({cmd:robreg mm}){p_end}
 {synopt:{cmd:e(delta)}}consistency parameter for scale estimation ({cmd:robreg s/mm}){p_end}
 {synopt:{cmd:e(h)}}relative size of H-subset ({cmd:robreg lts/lqs/lms}){p_end}
+{synopt:{cmd:e(q_h)}}h-quantile of squared residuals ({cmd:robreg lts/lqs/lms}){p_end}
 {synopt:{cmd:e(crit)}}value of optimization criterion ({cmd:robreg lts/lqs/lms}){p_end}
 {synopt:{cmd:e(nsamp)}}number of subsamples ({cmd:robreg s/mm/lts/lqs/lms}){p_end}
 {synopt:{cmd:e(rsteps)}}number of refinement steps ({cmd:robreg s/mm}){p_end}
