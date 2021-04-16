@@ -10,6 +10,13 @@ of squares) and LTS (least trimmed squares) are provided.
 
 Requires: Stata 11 or newer, package `moremata`
 
+To install `robreg` from the SSC Archive, type
+
+    . ssc install robreg, replace
+    . ssc install moremata, replace
+
+in Stata.
+
 ---
 
 Installation from GitHub:
@@ -21,6 +28,11 @@ Installation from GitHub:
 
 Main changes:
 
+    16apr2021 (version 2.0.2):
+    - options -noheader- and -notable- added
+    - option -nodetail- in -robreg hausman- no longer documented; use -notable-
+    - robreg can now display results from -xtrobreg-
+    
     08apr2021 (version 2.0.1):
     - robreg lts/lqs/lms now store the h-quantile of squared residuals in e(q_h)
       (for use by -predict, subset-)
