@@ -28,6 +28,9 @@ Installation from GitHub:
 
 Main changes:
 
+    19apr2021 (version 2.0.3):
+    - time-series operators are now allowed
+    
     16apr2021 (version 2.0.2):
     - options -noheader- and -notable- added
     - option -nodetail- in -robreg hausman- no longer documented; use -notable-

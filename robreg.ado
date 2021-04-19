@@ -1,4 +1,4 @@
-*! version 2.0.2  16apr2021  Ben Jann
+*! version 2.0.3  19apr2021  Ben Jann
 
 capt findfile lmoremata.mlib
 if _rc {
@@ -504,7 +504,7 @@ program Estimate, eclass
     foreach opt of local notallowed {
         local notallowedopts notallowedopts `opt'(passthru)
     }
-    syntax varlist(fv) [if] [in] [pw fw iw] [, ///
+    syntax varlist(fv ts) [if] [in] [pw fw iw] [, ///
         noCONStant nor2 ///
         vce(str) CLuster(varname) Ftest NOSE ///
         Level(passthru) all noHEADer NOTABle ///
@@ -819,7 +819,7 @@ program parse_nsamp
 end
 
 program parse_mopts
-    syntax [varlist(default=none fv)] [, ///
+    syntax [varlist(default=none fv ts)] [, ///
         EFFiciency(numlist max=1) K(numlist >0 max=1) ]
     if "`efficiency'"!="" & "`k'"!="" {
         di as err "{bf:efficiency()} and {bf:k()} not both allowed"

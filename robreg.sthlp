@@ -1,5 +1,5 @@
 {smcl}
-{* 16apr2021}{...}
+{* 19apr2021}{...}
 {hi:help robreg}{...}
 {right:{browse "http://github.com/benjann/robreg/"}}
 {hline}
@@ -47,6 +47,9 @@
 
 {pmore}
     {it:indepvars} may contain factor variables; see {help fvvarlist}.
+    {p_end}
+{pmore}
+    {it:depvar} and {it:indepvars} may contain time-series operators; see {help tsvarlist}.
     {p_end}
 {pmore}
     {cmd:fweight}s and {cmd:pweight}s are allowed; see {help weight}.
