@@ -1,4 +1,4 @@
-*! version 2.0.3  19apr2021  Ben Jann
+*! version 2.0.4  21apr2021  Ben Jann
 
 capt findfile lmoremata.mlib
 if _rc {
@@ -437,7 +437,7 @@ program Hausman
         else local touse `touse1'
         if `"`wtype1'"'!="" {
             tempvar wvar
-            qui gen double `wvar' = `wexp1' if `touse' 
+            qui gen double `wvar' `wexp1' if `touse' 
         }
         
         // IFs
