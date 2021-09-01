@@ -28,6 +28,11 @@ Installation from GitHub:
 
 Main changes:
 
+    25aug2021 (version 2.0.5):
+    - new ivar()/absorb() option (fixed effects) in -robreg ls- and -robreg m-
+    - -predict ... if 0, ifs- failed; this is fixed
+    - fixed alignment of table header in Stata 17
+
     21apr2021 (version 2.0.4):
     - -robreg hausman- failed if applied to models that were estimated with
       weights; this is fixed
