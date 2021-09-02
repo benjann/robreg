@@ -28,7 +28,14 @@ Installation from GitHub:
 
 Main changes:
 
-    25aug2021 (version 2.0.5):
+
+
+    02sep2021 (version 2.0.6):
+    - -robreg m- with ivar() or absorb() now uses mm_aqreg() to obtain LAD starting
+      values; this ensures regression equivariance (unlike the previously employed
+      approach based on group de-medianing)
+
+    01sep2021 (version 2.0.5):
     - new ivar()/absorb() option (fixed effects) in -robreg ls- and -robreg m-
     - -predict ... if 0, ifs- failed; this is fixed
     - fixed alignment of table header in Stata 17

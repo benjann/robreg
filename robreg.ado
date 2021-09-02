@@ -1,4 +1,4 @@
-*! version 2.0.5  01sep2021  Ben Jann
+*! version 2.0.6  02sep2021  Ben Jann
 
 capt findfile lmoremata.mlib
 if _rc {
@@ -905,6 +905,10 @@ program Estimate_m, eclass
     if `"`init'"'=="" local init "lad"
     if !inlist(`"`init'"', "lad", "ls") { // custom starting values
         confirm matrix `init'
+        if `"`ivar'`absorb'"'!="" {
+            di as err "{bf:init(}{it:matname}{bf:)} not allowed with {bf:ivar()} or {bf:absorb()}"
+            exit 198
+        }
     }
     
     // estimate
@@ -2038,8 +2042,6 @@ void rr_post(struct rr scalar S)
         st_numscalar("e(h)", S.h)
         st_numscalar("e(q_h)", S.q_h)
         st_numscalar("e(crit)", S.c)
-        st_numscalar("e(df_m)", S.p)
-        st_numscalar("e(df_r)", S.df)
         st_numscalar("e(nsamp)", S.nsamp)
         if (S.cmd!="lms") st_numscalar("e(bp)",  S.bp)
         if (S.cmd=="lts") {
@@ -3043,7 +3045,17 @@ void rr_m()
         }
     }
     else if (S.init=="lad") {
-        if (S.ivar) r = rr_m_init_lad_ivar(y, X, w, S)
+        if (S.ivar) {
+            if (S.dots) rr_printf("{txt}obtaining LAD starting values ...")
+            t = mm_aqreg(y, S.id, X, w, 0.5, 1, S.qd, S.ginfo)
+            S.b_init = mm_aqreg_b(t)
+            S.f.u = mm_aqreg_u(t)
+            r = y - (S.f.u + rr_xb(X, S.b_init, S.cons))
+            if (S.dots) rr_printf("{txt} done\n")
+            if (S.p & mm_aqreg_k_omit(t)) {
+                _rr_update_omit(X, S, mm_aqreg_k_omit(t), mm_aqreg_omit(t)[|1\S.p|]')
+            }
+        }
         else {
             if (S.dots) rr_printf("{txt}obtaining LAD starting values ...")
             S.b_init = rr_lad(y, X, w, S.cons, S.qd, S.dev)
@@ -3052,10 +3064,9 @@ void rr_m()
         }
     }
     else {
+        // note: not reached if ivar() or absorb()
         S.b_init = J(S.p + S.cons, 1, 0)
         rr_m_copy_b_init(S.b_init, S.xvars, S.cons, S.init)
-        // should add some code here to handle ivar(); or disallow init() with
-        // ivar(), or request that u is provided?
         r = y - rr_xb(X, S.b_init, S.cons)
     }
     
@@ -3072,32 +3083,6 @@ void rr_m()
     // post results
     rr_isrtomitted(S)
     rr_post(S)
-}
-
-real colvector rr_m_init_lad_ivar(real colvector y, real matrix X,
-    real colvector w, struct rr scalar S)
-{
-    real colvector r, yd
-    real matrix    Xd
-    class mm_qr scalar t
-    
-    if (S.dots) rr_printf("{txt}obtaining LAD starting values ...")
-    
-    // de-median data (with overall median added back in)
-    yd = (y - rd_gmed(S.ginfo, y, w)) :+ mm_median(y, w)
-    Xd = (X - rd_gmed(S.ginfo, X, w)) :+ mm_median(X, w)
-    
-    // LAD fit
-    t.p(.5)
-    t.qd(S.qd)
-    t.demean(S.dev)
-    t.data(yd, Xd, w, S.cons)
-    S.b_init = t.b()
-    r = yd - t.xb()
-    S.f.u = y - r - t.xb(X)
-    if (S.dots) rr_printf("{txt} done\n")
-    if (S.p & t.k_omit()) _rr_update_omit(X, S, t.k_omit(), t.omit()[|1\S.p|]')
-    return(r)
 }
 
 void rr_m_copy_b_init(real colvector b, string rowvector xvars, 

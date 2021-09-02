@@ -1,5 +1,5 @@
 {smcl}
-{* 01sep2021}{...}
+{* 02sep2021}{...}
 {hi:help robreg}{...}
 {right:{browse "http://github.com/benjann/robreg/"}}
 {hline}
@@ -586,6 +586,12 @@
     the starting values will be taken from the first row of matrix {it:matname}
     (coefficients will be matched by name; starting values for coefficients
     without match will be set to zero).
+
+{pmore}
+    If option {cmd:ivar()} or {cmd:absorb()} is specified, the fixed-effects
+    (quasi) quantile estimator implemented in {helpb mf_mm_aqreg:mm_aqreg()} is used to
+    determine the {cmd:lad} starting values. Furthermore, {opt init(matname)}
+    is not allowed with {cmd:ivar()} or {cmd:absorb()}.
 
 {marker s_options}{...}
 {dlgtab:Additional options for robreg s}
