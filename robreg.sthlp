@@ -1,5 +1,5 @@
 {smcl}
-{* 02sep2021}{...}
+{* 06sep2021}{...}
 {hi:help robreg}{...}
 {right:{browse "http://github.com/benjann/robreg/"}}
 {hline}
@@ -241,6 +241,8 @@
 {synopt :{cmd:m(}{varlist} [{cmd:,} {it:{help robreg##s_mopt:opts}}]{cmd:)}}variables
     to be partialled out in the subsampling algorithm
     {p_end}
+{synopt :{help robreg##ls_opts:{it:ls_options}}}fixed-effects options as for {cmd:robreg ls}
+    {p_end}
 
 {syntab :Subsampling algorithm}
 {synopt :{cmdab:n:samp(}{help robreg##s_nsamp:{it:args}}{cmd:)}}number of trial samples; {it:args} may be {it:#}
@@ -398,7 +400,7 @@
 {p2coldent :+ {opt rif:s}}recentered influence functions
     {p_end}
 {synoptline}
-{pstd}* only after {cmd:robreg ls} or {cmd:m} with option {cmd:ivar()} or {cmd:absorb()}{p_end}
+{pstd}* only after {cmd:robreg ls}, {cmd:m}, or {cmd:s} with option {cmd:ivar()} or {cmd:absorb()}{p_end}
 {pstd}§ only after {cmd:robreg m}, {cmd:s}, or {cmd:mm}{p_end}
 {pstd}# only after {cmd:robreg lts}, {cmd:lqs}, or {cmd:lms}{p_end}
 {pstd}+ only after {cmd:robreg ls}, {cmd:q}, {cmd:m}, {cmd:s}, or {cmd:mm}{p_end}
@@ -484,14 +486,20 @@
 {dlgtab:Additional options for robreg ls}
 
 {phang}
-    {opt ivar(varname)} specifies a variable identifying the groups for which
-    fixed effects are to be included in the model. 
+    {opt ivar(varname)} specifies a variable identifying groups for which
+    fixed effects are to be included in the model. Use 
+    {cmd:ivar()} in cases in which the number of groups increases with the
+    sample size (e.g. panel data). {cmd:ivar()} mimics
+    the behavior of {helpb xtreg:xtreg,fe} with option {cmd:robust}, that is, it
+    implies clustering on the group variable when computing standard errors (unless
+    an alternative clustering variable is specified in {cmd:vce()} or
+    {cmd:cluster()}; in any case, groups must be nested within clusters).
 
 {phang}
-    {opt absorb(varname)} is an alternative to {opt ivar()}. The only difference
-    lies in how the degrees of freedom are determined for variance 
-    estimation. {opt ivar()} behaves like {helpb xtreg:xtreg,fe}; 
-    {cmd:absorb()} behaves like {helpb areg}. 
+    {opt absorb(varname)} is an alternative to {opt ivar()} that mimics the
+    behavior of {helpb areg} (no clustering implied; groups not required 
+    to be nested within clusters). Use {cmd:absorb()} in cases in which the number
+    of groups does not increase with the sample size. 
 
 {phang}
     {opt nou} prevents storing a fixed-effects lookup table in matrix 
@@ -632,6 +640,10 @@
     to generate suitable candidate estimates without falling into the
     collinearity trap; the candidates are then optimized in the same way as without
     {cmd:m()} option).
+
+{phang}
+    {it:ls_options} are fixed-effects options as for {cmd:robreg ls}; see
+    {help robreg##ls_options:Additional options for robreg ls} above.
 
 {marker s_nsamp}{...}
 {phang}

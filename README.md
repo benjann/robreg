@@ -29,6 +29,10 @@ Installation from GitHub:
 Main changes:
 
 
+    06sep2021 (version 2.0.7):
+    - ivar()/absorb() option (fixed effects) now also supported by -robreg s-
+    - ivar() now automatically clusters SEs on the group id
+    - some minor buf fixes
 
     02sep2021 (version 2.0.6):
     - -robreg m- with ivar() or absorb() now uses mm_aqreg() to obtain LAD starting

@@ -1,4 +1,4 @@
-*! version 2.0.6  02sep2021  Ben Jann
+*! version 2.0.7  06sep2021  Ben Jann
 
 capt findfile lmoremata.mlib
 if _rc {
@@ -392,6 +392,9 @@ program Predict
             local ++i
             gettoken typ typlist : typlist
             qui _predict `typ' `v' if `touse', xb nolabel equation(#`i')
+            if `i'==1 & `ivar' {
+                qui replace `v' = `v' + `U' if `touse'
+            }
         }
     }
     mata: rr_`subcmd'_scores()
@@ -691,7 +694,7 @@ program Estimate, eclass
         gettoken vce cluster : vce
         if `:list sizeof cluster'==1 & ///
             substr("cluster", 1, max(2, strlen(`"`vce'"')))==`"`vce'"' {
-            local cluster `cluster' // trim
+            unab cluster : `cluster'
             local clustopt cluster(`cluster')
         }
         else if !(`"`cluster'"'=="" & ///
@@ -778,6 +781,15 @@ program Estimate, eclass
     }
     
     // estimate and post results
+    if "`novce'"=="" & "`ivar'"!="" {
+        if "`cluster'"=="" {
+            local cluster `ivar'
+            local clustopt cluster(`cluster')
+        }
+        else if "`cluster'"!="`ivar'" {
+            Panels_not_nested_in_clusters `ivar' `cluster' `touse'
+        }
+    }
     if inlist("`subcmd'","lqs","lts","lms") local cmd "lqs"
     else local cmd "`subcmd'"
     Estimate_`cmd' `subcmd' `refit' `wgt', y(`y') xvars(`xvars') `xvars0' ///
@@ -815,6 +827,16 @@ program Estimate, eclass
         lab var `ugenerate' "Fixed effect"
         eret local ugenerate "`ugenerate'"
     }
+end
+
+program Panels_not_nested_in_clusters, sortpreserve
+    args ivar cluster touse
+    capt bysort `touse' `ivar': assert(`cluster'==`cluster'[1]) if `touse'
+    if _rc==9 {
+        di as err "panels are not nested within clusters"
+        exit 498
+    }
+    exit _rc
 end
 
 program Estimate_ls, eclass
@@ -925,6 +947,7 @@ program Estimate_s, eclass
     gettoken refit 0 : 0    // not used
     syntax [pw fw/], y(str) touse(str) n(str) [ xvars(str) xvars0(str) ///
         noconstant nor2 cluster(str) ftest nose level(cilevel) ///
+        ivar(str) absorb(str) ugen(str) NOU ///
         tolerance(str) iterate(str) relax noquad nolog ///
         bp(numlist >=1 <=50 max=1) K(numlist >0 max=1) ///
         noHAUSman ///
@@ -954,7 +977,7 @@ program Estimate_s, eclass
         local m_vars: list uniq m_vars
         local m_vars0: list m_vars - xvars
         local m_vars: list m_vars & xvars
-        if `: list sizeof m_vars' {
+        if `: list sizeof m_vars0' {
             local m_vars0: list m_vars0 - xvars0
             if `: list sizeof m_vars0' {
                 gettoken m_vars0 : m_vars0
@@ -967,6 +990,7 @@ program Estimate_s, eclass
     
     // estimate
     mata: rr_s()
+    c_local xvars `xvars' // ivar()/absorb() may change omitted flags
 end
 
 program parse_nsamp
@@ -1114,6 +1138,10 @@ program ReEstimate_mm // returns diopts
         `"`e(prefix)'"'=="") {
         di as err "last estimates not found or invalid"
         exit 301
+    }
+    else if `"`e(ivar)'`e(absorb)'"'!="" {
+        di as err "MM after S with option {bf:ivar()} or {bf:absorb()} not supported"
+        exit 498
     }
     
     // syntax
@@ -1619,14 +1647,15 @@ struct rr scalar rr_setup(real colvector y, real matrix X,
     S.p       = length(S.xvars)
     S.cons    = (st_local("constant")=="")
     S.N       = strtoreal(st_local("n"))
-    S.df      = S.N - S.p - S.cons
     S.ivar    = (st_local("ivar")!="") + 2*(st_local("absorb")!="")
     if (S.ivar) {
         if   (S.ivar==1) S.id = st_data(., st_local("ivar"), touse)
         else S.id = st_data(., st_local("absorb"), touse)
         _mm_areg_grps(S.ginfo, S.id, 1) // build group info
         S.N_g = rows(S.ginfo.levels)
+        S.df = S.N - S.p - S.N_g
     }
+    else S.df = S.N - S.p - S.cons
     S.clust   = rr_clust(st_local("cluster"), touse)
     
     // flags for optional computations
@@ -1724,19 +1753,15 @@ real rowvector rr_indx_non_omitted(string rowvector xvars, real rowvector omit)
 
 // exclude additional omitted terms detected during estimation
 
-void rr_update_omit(real matrix X, struct rr scalar S, transmorphic t, 
-    | real matrix Xd)
+void rr_update_omit(real matrix X, struct rr scalar S, real scalar k_omit, 
+    real colvector omit0, | real matrix X1, real matrix X2)
 {
-    if (S.p & mm_areg_k_omit(t)) {
-        _rr_update_omit(X, S, mm_areg_k_omit(t), mm_areg_omit(t)[|1\S.p|]', Xd)
-    }
-}
-
-void _rr_update_omit(real matrix X, struct rr scalar S, real scalar k_omit, 
-    real rowvector omit, | real matrix Xd)
-{
+    real rowvector omit
     real colvector p
     
+    if (!k_omit) return
+    if (!S.p)    return
+    omit = omit0[|1\S.p|]'
     S.p  = S.p  - k_omit
     S.df = S.df + k_omit
     S.hm = S.hm & S.p
@@ -1746,8 +1771,16 @@ void _rr_update_omit(real matrix X, struct rr scalar S, real scalar k_omit,
     if (length(p)==0) p = J(1,0,.)
     S.xvars = S.xvars[p]
     S.xindx = S.xindx[p]
-    st_subview(X, X, ., p)
-    if (cols(Xd)) Xd = Xd[.,p]
+    if (isview(X)) st_subview(X, X, ., p)
+    else           X = X[,p]
+    if (cols(X1)) {
+        if (isview(X1)) st_subview(X1, X1, ., p)
+        else            X1 = X1[,p]
+    }
+    if (cols(X2)) {
+        if (isview(X2)) st_subview(X2, X2, ., p)
+        else            X2 = X2[,p]
+    }
     p = p, cols(omit) + 1
     if (length(S.f.b))    S.f.b    = S.f.b[p]
     if (length(S.b_init)) S.b_init = S.b_init[p]
@@ -2350,8 +2383,11 @@ struct rr_fit scalar rr_irls(real colvector y, real matrix X, real colvector w,
     
     if (S.dots) rr_printf("{txt}iterating RLS ")
     // - starting values
-    f.b = b0 = S.b_init
-    if (args()<5) r = y - rr_xb(X, b0, S.cons)
+    if (args()<5) {
+        f.b = b0 = length(S.b_init) ? S.b_init : J(cols(X)+S.cons,1,0)
+        r = y - rr_xb(X, b0, S.cons)
+    }
+    else f.b = b0 = length(S.b_init) ? S.b_init : J(cols(X)+S.cons,1,.)
     f.scale = S.s_init
     _rr_irls_s(f.scale, r, w, S.siter, S)
     f.W = J(rows(r),1,0) // so that it exists even if maxiter=0
@@ -2408,11 +2444,9 @@ struct rr_fit scalar rr_irls(real colvector y, real matrix X, real colvector w,
 void _rr_irls_s(real scalar s, real colvector r, real colvector w, 
     real scalar siter, struct _rr_irls scalar S)
 {
-    real scalar iter, s0, df
+    real scalar iter, s0
     
-    if (S.ivar) df = S.N - S.p - S.N_g
-    else        df = S.df
-    if (s>=.) s = rr_madn(r, w, S.center, S.N, df)
+    if (s>=.) s = rr_madn(r, w, S.center, S.N, S.df)
     iter = 0
     while (iter<siter) {
         if (s==0) return
@@ -2420,7 +2454,7 @@ void _rr_irls_s(real scalar s, real colvector r, real colvector w,
         s0 = s
         s  = s0 * editmissing(sqrt(
              quadcross(w,mm_biweight_rho(r / s0, S.k))/S.wsum // = mean()
-             * (S.N / (df * S.delta))), 0)
+             * (S.N / (S.df * S.delta))), 0)
         if (reldif(ln(s),ln(s0))<=S.tol) {
             return
         }
@@ -2571,8 +2605,8 @@ struct rr_smpl_struct {
     pointer(function) scalar f
 }
 
-struct rr_smpl_struct scalar rr_smpl_init(pointer scalar y, 
-    pointer scalar X, real scalar p, real scalar cons, real scalar smpl)
+struct rr_smpl_struct scalar rr_smpl_init(real colvector y, 
+    real matrix X, real scalar p, real scalar cons, real scalar smpl)
 {
     struct rr_smpl_struct scalar S
     
@@ -2581,15 +2615,15 @@ struct rr_smpl_struct scalar rr_smpl_init(pointer scalar y,
     else              S.f = &_rr_smpl_nonsing()
     S.cons = cons
     S.p = p + S.cons
-    S.y = y
-    S.X = X
-    S.n = rows(*y)
+    S.y = &y
+    S.X = &X
+    S.n = rows(y)
     if (smpl!=1) S.I = 1::S.n
     // could also restrict the sample to unique (y,X), but this does not seem 
     // worth the effort; last two lines would need to be replaced by the
     // following (would also need to adjust _rr_s_cand_naive() to
     // make use of S.I):
-    //    S.I = select(1::rows(*y), mm_uniqrows_tag((*y, *X)))
+    //    S.I = select(1::rows(y), mm_uniqrows_tag((y, X)))
     //    S.n = rows(S.I)
     return(S)
 }
@@ -2755,13 +2789,12 @@ void rr_ls()
     if (S.ivar) {
         if (S.vce) {
             t = mm_areg(y, S.id, X, w, 1, S.qd, S.ginfo, d)
-            d.Xd = d.Xd :+ mm_areg_means(t)
+            d.Xd = d.Xd :+ mm_areg_means(t)         // !!!
             d.Xm = J(0,0,.); d.ym = d.yd = J(0,1,.) // free memory
         }
         else t = mm_areg(y, S.id, X, w, 1, S.qd, S.ginfo)
         S.f.b = mm_areg_b(t)
         if (S.se) S.Ginv = mm_areg_XXinv(t)
-        S.df = S.N - S.p - S.N_g
         S.f.u = mm_areg_u(t)
         r = rr_resid(y - S.f.u, X, S.f.b, S.cons, S.f.scale, xb)
         S.corr = corr(variance((S.f.u,xb), w))[2,1]
@@ -2770,7 +2803,7 @@ void rr_ls()
             S.b0 = mm_areg_ymean(t)
             S.scale0 = mean((y :- S.b0):^2, w)
         }
-        rr_update_omit(X, S, t, d.Xd)
+        rr_update_omit(X, S, mm_areg_k_omit(t), mm_areg_omit(t), d.Xd)
     }
     else {
         t = mm_ls(y, X, w, S.cons, S.qd, S.dev)
@@ -2794,7 +2827,7 @@ void rr_ls()
         S.scale0 = sqrt(S.scale0 * editmissing((S.N / (S.N-1)), 0))
     }
     S.f.scale = sqrt(S.f.scale * editmissing(S.N / S.df, 0))
-    if (S.vce) rr_ls_V(r, X, w, S, d.Xd)
+    if (S.vce) rr_ls_V(r, S.ivar ? d.Xd : X, w, S)
     if (S.se)  S.Ginv = S.Ginv * S.f.scale^2
     
     // post results
@@ -2809,20 +2842,15 @@ void rr_ls_scores()
 }
 
 void rr_ls_V(real colvector r, real matrix X, real colvector w,
-    struct rr scalar S, | real matrix Xd)
+    struct rr scalar S)
 {
     real scalar p
     real matrix IF
     
-    if (S.ivar) {
-        IF = (r :* (Xd, J(rows(X), S.cons, 1))) * S.Ginv'
-        if (S.ivar==1) p = S.p + S.cons // ivar(); df like -xtreg, fe-
-        else           p = S.p + S.N_g  // absorb(), def like -areg-
-    }
-    else {
-        IF = (r :* (X, J(rows(X), S.cons, 1))) * S.Ginv'
-        p = S.p + S.cons
-    }
+    IF = (r :* (X, J(rows(X), S.cons, 1))) * S.Ginv'
+    if      (S.ivar==1) p = S.p + S.cons // ivar() (df like xtreg,fe)
+    else if (S.ivar==2) p = S.p + S.N_g  // absorb() (df like areg)
+    else                p = S.p + S.cons // else
     S.V = rr_VCE(IF, w, S.fw, p, S.N, S.clust, S.N_clust)
 }
 
@@ -2991,17 +3019,17 @@ void rr_q_V(real colvector r, real colvector y, real matrix X, real colvector w,
 
 void rr_m_scores()
 {
-    real scalar    s, k
+    real scalar    k
     string scalar  obf
-    real colvector y, xb, psi
+    real colvector psi
     
     obf = st_global("e(obf)")
-    s   = st_numscalar("e(scale)")
     k   = st_numscalar("e(k)")
-    y   = st_data(., st_global("e(depvar)"), st_local("touse"))
-    xb  = st_data(., st_local("varlist"), st_local("touse"))
-    if (obf=="biweight") psi = mm_biweight_psi((y-xb)/s, k)
-    else                 psi = mm_huber_psi((y-xb)/s, k)
+    psi = (st_data(., st_global("e(depvar)"), st_local("touse"))
+          - st_data(., st_local("varlist"), st_local("touse"))) /
+          st_numscalar("e(scale)")
+    if (obf=="biweight") psi = mm_biweight_psi(psi, k)
+    else                 psi = mm_huber_psi(psi, k)
     st_store(., st_local("varlist"), st_local("touse"), psi)
 }
 
@@ -3011,6 +3039,7 @@ void rr_m()
     real matrix      X
     struct rr scalar S
     transmorphic     t
+    pragma unset xb
     
     // setup
     S = rr_setup(y=., X=., w=.)
@@ -3035,7 +3064,7 @@ void rr_m()
             S.f.u = mm_areg_u(t)
             r = y - (S.f.u + rr_xb(X, S.b_init, S.cons))
             if (S.dots) rr_printf("{txt} done\n")
-            rr_update_omit(X, S, t)
+            rr_update_omit(X, S, mm_areg_k_omit(t), mm_areg_omit(t))
         }
         else {
             if (S.dots) rr_printf("{txt}obtaining LS starting values ...")
@@ -3052,9 +3081,7 @@ void rr_m()
             S.f.u = mm_aqreg_u(t)
             r = y - (S.f.u + rr_xb(X, S.b_init, S.cons))
             if (S.dots) rr_printf("{txt} done\n")
-            if (S.p & mm_aqreg_k_omit(t)) {
-                _rr_update_omit(X, S, mm_aqreg_k_omit(t), mm_aqreg_omit(t)[|1\S.p|]')
-            }
+            rr_update_omit(X, S, mm_aqreg_k_omit(t), mm_aqreg_omit(t))
         }
         else {
             if (S.dots) rr_printf("{txt}obtaining LAD starting values ...")
@@ -3104,40 +3131,28 @@ void rr_m_copy_b_init(real colvector b, string rowvector xvars,
     }
 }
 
-void rr_m_V(real colvector r, real matrix X, real colvector w,
+void rr_m_V(real colvector r, real matrix X0, real colvector w,
     struct rr scalar S)
 {
     real scalar    p
     real colvector z, wphi, psi
-    real rowvector xm
-    real matrix    Xd, IF
+    real matrix    IF
+    pointer scalar X
     
     if (S.dots) rr_printf("{txt}computing standard errors ...")
     z = r / S.f.scale
     if (S.obf=="biweight") wphi = w :* mm_biweight_phi(z, S.k)
     else                   wphi = w :* mm_huber_phi(z, S.k)
-    if (S.ivar) {
-        xm = mean(X, wphi)
-        Xd = (X - _mm_areg_gmean(S.ginfo, X, wphi, 1))
-        S.Ginv = invsym(quadcross(Xd, wphi, Xd))
-        S.Ginv = S.Ginv \ -(xm * S.Ginv)
-        S.Ginv = (S.Ginv, (S.Ginv[cols(X)+1,]' \ 
-            1/quadsum(wphi) - xm * S.Ginv[cols(X)+1,]'))
-        S.Ginv = S.Ginv * S.f.scale
-    }
-    else S.Ginv = rr_XXinv(X, wphi, S.cons) * S.f.scale
+    if (S.ivar) X = &((X0 - _mm_areg_gmean(S.ginfo,X0,wphi,1)) :+ mean(X0,wphi))
+    else        X = &X0
+    S.Ginv = rr_XXinv(*X, wphi, S.cons) * S.f.scale
     if (S.vce) {
         if (S.obf=="biweight") psi = mm_biweight_psi(z, S.k)
         else                   psi = mm_huber_psi(z, S.k)
-        if (S.ivar) {
-            IF = psi :* (Xd:+xm, J(rows(X), S.cons, 1)) * S.Ginv'
-            if (S.ivar==1) p = S.p + S.cons // ivar()
-            else           p = S.p + S.N_g  // absorb()
-        }
-        else {
-            IF = psi :* (X, J(rows(X), S.cons, 1)) * S.Ginv'
-            p = S.p + S.cons
-        }
+        if      (S.ivar==1) p = S.p + S.cons // ivar() (df like xtreg,fe)
+        else if (S.ivar==2) p = S.p + S.N_g  // absorb() (df like areg)
+        else                p = S.p + S.cons // else
+        IF = psi :* (*X, J(rows(*X), S.cons, 1)) * S.Ginv'
         S.V = rr_VCE(IF, w, S.fw, p, S.N, S.clust, S.N_clust)
     }
     if (S.dots) rr_printf("{txt} done\n")
@@ -3174,22 +3189,27 @@ void rr_s_scores()
     
     v = tokens(st_local("varlist"))
     k = st_numscalar("e(k)")
-    e = st_data(., st_global("e(depvar)"), st_local("touse"))
-    e = (e - st_data(., v[1], st_local("touse")))
-    e = e / st_numscalar("e(scale)")
+    e = (st_data(., st_global("e(depvar)"), st_local("touse"))
+        - st_data(., v[1], st_local("touse"))) / st_numscalar("e(scale)")
     st_store(., v[1], st_local("touse"), mm_biweight_psi(e, k))
     if (length(v)==1) return
-    c = st_numscalar("e(N)")
-    c = c / (c - st_numscalar("e(df_m)") - (st_global("e(noconstant)")==""))
+    if      (st_global("e(ivar)")!="")   c = st_numscalar("e(N_g)")
+    else if (st_global("e(absorb)")!="") c = st_numscalar("e(N_g)")
+    else                                 c = st_global("e(noconstant)")==""
+    c = st_numscalar("e(df_m)") + c
+    c = st_numscalar("e(N)") / (st_numscalar("e(N)") - c)
     st_store(., v[2], st_local("touse"), c * mm_biweight_rho(e, k) :- 
         st_numscalar("e(delta)"))
 }
 
 void rr_s()
 {
-    real colvector   y, w, r
-    real matrix      X
+    real colvector   y, y1, w, r, xb
+    real matrix      X, X1
+    pointer scalar   y2, X2
     struct rr scalar S
+    struct rr_std_struct scalar std
+    pragma unset xb
     
     // S setup
     S = rr_setup(y=., X=., w=.)
@@ -3202,24 +3222,42 @@ void rr_s()
     S.eff   = mm_biweight_eff(S.k) * 100
     S.delta = S.bp/100 * S.k^2/6
     
-    // M-S setup
+    // data preparation
+    if (S.dots) rr_printf("{txt}preparing data for subsampling ... ")
+    y1 = y; y2 = &y1
+    X1 = X; X2 = &X1
+    // - standardize data (to increase numerical stability)
+    std = rr_std(y1, X1, w, S.cons, S.nostd)
+    // - de-median data if ivar()/absorb()
+    if (S.ivar) {
+        y2 = &(*y2 - rd_gmed(S.ginfo, *y2, w))
+        X2 = &(*X2 - rd_gmed(S.ginfo, *X2, w))
+        rr_s_update_omit(*X2, w, S, X, X1, std)
+    }
+    // - M-S setup
     S.p1 = 0; S.p2 = S.p; S.cons2 = S.cons
     S.x1 = tokens(st_local("m_vars"))
     _rr_ms_match_x1(S)
-    if (S.p1) {
+    if (S.p1) { // residualize y and X for S part (using LAD starting values)
         S.k1   = strtoreal(st_local("m_k"))
         S.eff1 = strtoreal(st_local("m_efficiency"))
         if (S.k1>=.) S.k1   = mm_huber_k(S.eff1)
         else         S.eff1 = mm_huber_eff(S.k1) * 100
+        _rr_s_mresid(y2, X2, w, S)
     }
-    
-    // number of subsamples
+    // - number of subsamples
     if (S.nsamp>=.)      rr_nsamp(S.p2, 20, 1000, S)
     if (S.nkeep>S.nsamp) S.nkeep = S.nsamp
+    if (S.dots) rr_printf("{txt}done\n")
     
     // estimation
-    S.f = _rr_s(y, X, w, S)
-    r = rr_resid(y, X, S.f.b, S.cons, S.f.scale) // sets scale=0 if perfect fit
+    S.f = _rr_s(y1, X1, *y2, *X2, w, S, std)
+    y1 = J(0,1,.); X1 = J(0,0,.); y2 = X2 = NULL // release memory
+    if (S.ivar) {
+        r = rr_resid(y - S.f.u, X, S.f.b, S.cons, S.f.scale, xb)
+        S.corr = corr(variance((S.f.u,xb), w))[2,1]
+    }
+    else r = rr_resid(y, X, S.f.b, S.cons, S.f.scale)
     if (S.r2) rr_r2(r, y, w, S)
     if (S.se) rr_s_V(r, y, X, w, S)
     
@@ -3228,6 +3266,34 @@ void rr_s()
     rr_post(S)
 }
 
+// - look for collinear terms in de-medianed data
+void rr_s_update_omit(real matrix X, real colvector w, struct rr scalar S, 
+    real matrix X0, real matrix X1, struct rr_std_struct scalar std)
+{
+    real scalar    k_omit
+    real colvector omit
+    real rowvector p
+    real matrix    XX
+    
+    // remove omitted terms
+    if (!S.p) return
+    XX = S.qd ? quadcross(X,1, w, X,1) : cross(X,1, w, X,1) // include constant
+    omit = diagonal(invsym(XX, S.p+1))[|1\S.p|]:==0     // do not omit constant
+    k_omit = sum(omit)
+    if (!k_omit) return
+    if (S.dots) rr_printf("\n")
+    rr_update_omit(X, S, sum(omit), omit, X0, X1)
+    
+    // update std
+    if (std.nostd) return
+    p = select(1::rows(omit), !omit)'
+    if (length(p)==0) p = J(1,0,.)
+    std.Xmed  = std.Xmed[p]
+    std.Xmadn = std.Xmadn[p]
+    std.p     = length(std.Xmed)
+}
+
+// - separate terms between S and M part of model
 void _rr_ms_match_x1(struct rr scalar S)
 {
     real colvector d
@@ -3250,118 +3316,84 @@ void _rr_ms_match_x1(struct rr scalar S)
     S.cons2 = 1 // always include constant in S part
 }
 
-void rr_s_V(real colvector r, real colvector y, real matrix X, 
-    real colvector w, struct rr scalar S)
-{
-    real scalar    c, d
-    real colvector z, rho, psi, phi
-    real matrix    IF, Ainv
-    
-    if (S.dots) rr_printf("{txt}computing standard errors ...")
-    c = S.N / S.df
-    z = r / S.f.scale
-    psi = mm_biweight_psi(z, S.k)
-    phi = mm_biweight_phi(z, S.k)
-    // computing Ginv using blockwise inversion:
-    //     Ginv = (A^-1, -A^-1 * B / d) \ (0, 1/d)
-    //  if    G = (A, B) \ (0, d)
-    Ainv = rr_XXinv(X, phi:*w, S.cons)
-    d = quadcross(1, c*psi:*w, z)
-    S.Ginv = ((Ainv, -Ainv*quadcross(X, S.cons, phi:*w, z, 0)/d) \
-              (J(1,S.p+S.cons, 0), 1/d)) * S.f.scale
-    if (S.vce) {
-        rho = mm_biweight_rho(z, S.k)
-        IF = (psi:*(X, J(rows(X), S.cons, 1)), (c*rho:-S.delta)) * S.Ginv'
-        S.V = rr_VCE(IF, w, S.fw, S.p+S.cons, S.N, S.clust, S.N_clust)
-        if (S.hm) rr_s_hm(IF, y, X, w, S)
-    }
-    if (S.dots) rr_printf("{txt} done\n")
-}
-
-void rr_s_hm(real matrix IF, real colvector y, real matrix X, 
-    real colvector w, struct rr scalar S)
-{
-    real colvector b, r
-    real matrix    V
-    transmorphic   t
-    
-    // LS fit
-    t = mm_ls(y, X, w, S.cons, S.qd, S.dev)
-    b = mm_ls_b(t)
-    r = rr_resid(y, X, b, S.cons)
-    V = mm_ls_XXinv(t)
-    // variance matrix of difference in IFs
-    IF = IF[|1,1 \ .,S.p|] - ///
-         ((r :* (X, J(rows(X), S.cons, 1))) * V')[|1,1 \ .,S.p|]
-    V = rr_VCE(IF, w, S.fw, S.p+S.cons, S.N, S.clust, S.N_clust)
-    // - test differences against zero
-    b = S.f.b[|1\S.p|] - b[|1\S.p|]
-    S.hm_chi2 = b' * invsym(V) * b
-    if (S.ftest) {
-        S.hm_chi2 = S.hm_chi2 / S.p // => F
-        S.hm_p = Ftail(S.p, S.N_clust<. ? S.N_clust - 1 : S.df, S.hm_chi2)
-    }
-    else S.hm_p = chi2tail(S.p, S.hm_chi2)
-}
-
-struct rr_fit scalar _rr_s(real colvector y0, real matrix X0, real colvector w,
+// - residualize variables of S part of model
+void _rr_s_mresid(pointer scalar y2, pointer scalar X2, real colvector w,
     struct rr scalar S)
 {
+    real scalar    j
+    real colvector y
+    real matrix    X, X1
+    struct _rr_irls scalar M
+    pragma unset   X1
+    
+    y = *y2
+    st_subview(X1, *X2, ., S.x1id)
+    X = (*X2)[,S.x2id]
+    M = rr_irls_init(S, "huber"); M.dots = M.qd = M.dev = 0; M.k = S.k1
+    for (j=S.p2; j; j--) __rr_s_mresid(X[,j], X1, w, M)
+    __rr_s_mresid(y, X1, w, M)
+    y2 = &y
+    X2 = &X
+}
+
+void __rr_s_mresid(real colvector y, real matrix X,
+    real colvector w, struct _rr_irls scalar S)
+{
+    struct rr_fit scalar f
+    
+    S.b_init = rr_lad(y, X, w, S.cons, S.qd, S.dev)
+    S.s_init = .
+    f = rr_irls(y, X, w, S)
+    y = y - rr_xb(X, f.b, S.cons)
+}
+
+// - subsampling algorithm
+struct rr_fit scalar _rr_s(real colvector y, real matrix X, 
+    real colvector y2, real matrix X2, real colvector w,
+    struct rr scalar S, struct rr_std_struct scalar std)
+{
     real scalar       i, j, j0, doti, null
-    real colvector    r, y, s, s0, B0, x0
-    real matrix       X, X1, bT
-    pointer scalar    y2, X2
-    pointer colvector B
+    real colvector    b, r, s, s0, B0, x0
+    pointer colvector B, U
     transmorphic      t
     struct rr_fit scalar f
     struct _rr_irls scalar M, M0
-    struct rr_std_struct scalar std
-    pragma unset   X1
     
     // whether to include estimation of empty model
     null = (S.r2 & (S.p | S.cons))
     
-    // data preparation
-    if (S.dots) rr_printf("{txt}preparing data for subsampling ...")
-    y = y0; y2 = &y
-    X = X0; X2 = &X
-    // - standardize data (to increase numerical stability)
-    std = rr_std(y, X, w, S.cons, S.nostd)
-    if (S.p1) {
-        // residualize y and X for S part (using LAD starting values)
-        st_subview(X1, X, ., S.x1id)
-        bT = _rr_s_residualize(y2, X2, X1, w, S)
-    }
-    if (S.dots) rr_printf("{txt} done\n")
-    
     // enumerate candidates
     if (S.dots) doti = rr_progress_init(S.nsamp)
-    M = rr_irls_init(S); M.dots = M.qd = M.dev = 0; M.cons = S.cons
+    M = rr_irls_init(S, S.obf, S.ivar)
+    M.dots = M.qd = M.dev = 0; M.cons = S.cons
     M.maxiter = S.rsteps; M.relax = 1      // number of refinement steps
     M.siter = 1; M.update = 1; M.sconv = 1 // do one scale step per rstep
     t = rr_smpl_init(y2, X2, S.p2, S.cons2, S.smpl)
     B = J(S.nkeep, 1, NULL)
+    if (S.ivar) U = J(S.nkeep, 1, NULL)
     s = J(S.nkeep, 1, .)
     if (null) {
         B0 = s0 = s
         M0 = M
-        M0.p = 0; M0.cons = 1; M0.df = M0.N - 1
+        M0.p = 0; M0.cons = 1; M0.df = M0.N - 1; M0.ivar = 0
         x0 = J(rows(y), 0, .)
     }
     j = j0 = 1 // index of worst candidate
     for (i=1; i<=S.nsamp; i++) {
         // obtain fit from nonsingular subsample and apply refinement steps(s)
-        M.b_init = rr_smpl(t); M.s_init = .
-        if (S.p1) _rr_s_append_b1(bT[,1], M.b_init, S)
-        f = rr_irls(y, X, w, M)
+        b = rr_smpl(t); M.s_init = .
+        r = y2 - rr_xb(X2, b, S.cons2)
+        f = rr_irls(y, X, w, M, r)
         // optimize scale and keep hold of good candidates
-        r = y - rr_xb(X, f.b, M.cons)
+        if (S.ivar) r = y - (rr_xb(X, f.b, M.cons) + f.u)
+        else        r = y -  rr_xb(X, f.b, M.cons)
         if (_rr_s_check_scale(r, w, s[j], M)) {
             // optimize scale until convergence
             _rr_irls_s(f.scale, r, w, S.maxiter, M)
             // keep if better than worst candidate
             if (f.scale<s[j]) {
                 B[j] = &f.b; s[j] = f.scale
+                if (S.ivar) U[j] = &f.u
                 j = order(s,1)[S.nkeep]
             }
         }
@@ -3391,8 +3423,16 @@ struct rr_fit scalar _rr_s(real colvector y0, real matrix X0, real colvector w,
     j = j0 = 1
     for (i=1; i<=S.nkeep; i++) {
         M.b_init = *B[i]; M.s_init = s[i]
-        f = rr_irls(y, X, w, M)
+        if (S.ivar) {
+            r = y - (rr_xb(X, M.b_init, M.cons) + *U[i])
+            f = rr_irls(y, X, w, M, r, *U[i])
+        }
+        else {
+            r = y - rr_xb(X, M.b_init, M.cons)
+            f = rr_irls(y, X, w, M, r)
+        }
         B[i] = &f.b; s[i] = f.scale
+        if (S.ivar)  U[i] = &f.u
         if (s[i]<s[j]) j = i // index of best candidate
         // empty model
         if (null) {
@@ -3415,43 +3455,19 @@ struct rr_fit scalar _rr_s(real colvector y0, real matrix X0, real colvector w,
     }
     M.qd = S.qd; M.dev = S.dev; M.sconv = 0
     M.b_init = *B[j]; M.s_init = s[j]
-    f = rr_irls(y, X, w, M)
+    if (S.ivar) {
+        r = y - (rr_xb(X, M.b_init, M.cons) + *U[j])
+        f = rr_irls(y, X, w, M, r, *U[j])
+    }
+    else {
+        r = y - rr_xb(X, M.b_init, M.cons)
+        f = rr_irls(y, X, w, M, r)
+    }
     rr_destd(f.b, std)
     f.scale = f.scale * std.ymadn
+    if (S.ivar) f.u = f.u * std.ymadn
     if (S.dots) rr_printf("{txt} done\n")
     return(f)
-}
-
-// - residualize variables of S part of model
-real matrix _rr_s_residualize(pointer scalar y2, pointer scalar X2,
-    real matrix X1, real colvector w, struct rr scalar S)
-{
-    real scalar    j
-    real colvector y
-    real matrix    X, B
-    struct _rr_irls scalar M
-    
-    M = rr_irls_init(S, "huber"); M.dots = M.qd = M.dev = 0; M.k = S.k1
-    y = *y2
-    X = (*X2)[,S.x2id]
-    B = J(S.p1+S.cons, S.p2+1, .)
-    for (j=S.p2; j; j--) B[,j+1] = __rr_s_residualize(X[,j], X1, w, M)
-    B[,1] = __rr_s_residualize(y, X1, w, M)
-    y2 = &y
-    X2 = &X
-    return(B)
-}
-
-real colvector __rr_s_residualize(real colvector y, real matrix X,
-    real colvector w, struct _rr_irls scalar S)
-{
-    struct rr_fit scalar f
-    
-    S.b_init = rr_lad(y, X, w, S.cons, S.qd, S.dev)
-    S.s_init = .
-    f = rr_irls(y, X, w, S)
-    y = y - rr_xb(X, f.b, S.cons)
-    return(f.b)
 }
 
 // - check whether candidate is worth considering
@@ -3464,18 +3480,81 @@ real scalar _rr_s_check_scale(real colvector r, real colvector w,
         * (S.N / S.df), 0) <= S.delta)
 }
 
-// - append coefficients from M part of model
-void _rr_s_append_b1(real colvector b1, real colvector b2,
-    struct rr scalar S)
+// - variance estimation
+void rr_s_V(real colvector r, real colvector y, real matrix X0, 
+    real colvector w, struct rr scalar S)
 {
-    real colvector b
+    real scalar    c, d, p
+    real colvector z, rho, psi, wphi
+    real matrix    IF, Ainv
+    pointer scalar X
+    
+    if (S.dots) rr_printf("{txt}computing standard errors ...")
+    c = S.N / S.df
+    z = r / S.f.scale
+    psi  = mm_biweight_psi(z, S.k)
+    wphi = w :* mm_biweight_phi(z, S.k)
+    if (S.ivar) X = &((X0 - _mm_areg_gmean(S.ginfo,X0,wphi,1)) :+ mean(X0,wphi))
+    else        X = &X0
+    // computing Ginv using blockwise inversion:
+    //     Ginv = (A^-1, -A^-1 * B / d) \ (0, 1/d)
+    //  if    G = (A, B) \ (0, d)
+    Ainv = rr_XXinv(*X, wphi, S.cons)
+    d = quadcross(1, c*psi:*w, z)
+    S.Ginv = ((Ainv, -Ainv*quadcross(*X, S.cons, wphi, z, 0)/d) \
+              (J(1,S.p+S.cons, 0), 1/d)) * S.f.scale
+    if (S.vce) {
+        rho = mm_biweight_rho(z, S.k)
+        if      (S.ivar==1) p = S.p + S.cons // ivar() (df like xtreg,fe)
+        else if (S.ivar==2) p = S.p + S.N_g  // absorb() (df like areg)
+        else                p = S.p + S.cons // else
+        IF = (psi:*(*X, J(rows(*X), S.cons, 1)), (c*rho:-S.delta)) * S.Ginv'
+        S.V = rr_VCE(IF, w, S.fw, p, S.N, S.clust, S.N_clust)
+        if (S.hm) rr_s_hm(IF, y, X0, w, S)
+    }
+    if (S.dots) rr_printf("{txt} done\n")
+}
 
-    b = J(S.p + S.cons, 1, 0)
-    b[S.x2id] = b2[|1\S.p2|]
-    b[S.x1id] = b1[|1\S.p1|]
-    if (S.cons) b[S.p+1] = b1[S.p1+1] + b2[S.p2+1]
-        // note: constant from S part will be dropped if model has no constant
-    swap(b2, b)
+// - hausman test against LS
+void rr_s_hm(real matrix IF, real colvector y, real matrix X, 
+    real colvector w, struct rr scalar S)
+{
+    real scalar    p
+    real colvector b, r
+    real matrix    V
+    transmorphic   t
+    struct mm_areg_struct_data scalar d
+    
+    // LS fit
+    if (S.ivar) {
+        t = mm_areg(y, S.id, X, w, 1, S.qd, S.ginfo, d)
+        d.Xd = d.Xd :+ mm_areg_means(t)         // !!!
+        d.Xm = J(0,0,.); d.ym = d.yd = J(0,1,.) // free memory
+        b = mm_areg_b(t)
+        r = rr_resid(y - mm_areg_u(t), X, b, S.cons)
+        V = mm_areg_XXinv(t)
+    }
+    else {
+        t = mm_ls(y, X, w, S.cons, S.qd, S.dev)
+        b = mm_ls_b(t)
+        r = rr_resid(y, X, b, S.cons)
+        V = mm_ls_XXinv(t)
+    }
+    // variance matrix of difference in IFs
+    IF = IF[|1,1 \ .,S.p|] - ///
+         ((r :* ((S.ivar ? d.Xd : X), J(rows(X),S.cons,1))) * V')[|1,1 \ .,S.p|]
+    if      (S.ivar==1) p = S.p + S.cons // ivar() (df like xtreg,fe)
+    else if (S.ivar==2) p = S.p + S.N_g  // absorb() (df like areg)
+    else                p = S.p + S.cons // else
+    V = rr_VCE(IF, w, S.fw, p, S.N, S.clust, S.N_clust)
+    // - test differences against zero
+    b = S.f.b[|1\S.p|] - b[|1\S.p|]
+    S.hm_chi2 = b' * invsym(V) * b
+    if (S.ftest) {
+        S.hm_chi2 = S.hm_chi2 / S.p // => F
+        S.hm_p = Ftail(S.p, S.N_clust<. ? S.N_clust - 1 : S.df, S.hm_chi2)
+    }
+    else S.hm_p = chi2tail(S.p, S.hm_chi2)
 }
 
 /*---------------------------------------------------------------------------*/
@@ -3712,7 +3791,7 @@ struct rr_fit scalar _rr_lqs(real colvector y0, real matrix X0, real colvector w
     
     // enumerate candidates
     if (S.dots) doti = rr_progress_init(S.nsamp)
-    t = rr_smpl_init(&y, &X, S.p, S.cons, S.smpl)
+    t = rr_smpl_init(y, X, S.p, S.cons, S.smpl)
     for (i=1; i<=S.nsamp; i++) {
         // full model
         b = rr_smpl(t)
@@ -3790,7 +3869,7 @@ struct rr_fit scalar _rr_lts(real colvector y0, real matrix X0, real colvector w
     // enumerate candidates
     if (S.dots) doti = rr_progress_init(S.nsamp)
     n = rows(y); Indx = 1::n
-    t = rr_smpl_init(&y, &X, S.p, S.cons, S.smpl)
+    t = rr_smpl_init(y, X, S.p, S.cons, S.smpl)
     f = rr_fit(S.nkeep); f0 = rr_fit(S.nkeep);
     k = k0 = 1 // index of worst candidate
     for (i=1; i<=S.nsamp; i++) {
