@@ -1,5 +1,5 @@
 {smcl}
-{* 06sep2021}{...}
+{* 18sep2021}{...}
 {hi:help robreg}{...}
 {right:{browse "http://github.com/benjann/robreg/"}}
 {hline}
@@ -165,16 +165,7 @@
 
 {marker ls_opts}{col 5}{it:{help robreg##ls_options:ls_options}}{col 28}description
 {synoptline}
-{syntab :Fixed effects}
-{synopt :{opt i:var(varname)}}variable identifying the groups; VCE like {helpb xtreg:xtreg,fe}
-    {p_end}
-{synopt :{opt a:bsorb(varname)}}variable identifying the groups; VCE like {helpb areg}
-    {p_end}
-{synopt :{opt nou}}do not store fixed effects in {cmd:e()}
-    {p_end}
-{synopt :{opth ugen:erate(newvar)}}store fixed effects as a variable, rather than in {cmd:e()}
-    {p_end}
-{synopt :{opt replace}}allow overwriting existing variable
+{synopt :{help robreg##fe_opts:{it:fe_options}}}fixed-effects options
     {p_end}
 {synoptline}
 
@@ -211,7 +202,7 @@
     {p_end}
 {synopt :{opt k(#)}}tuning constant; alternative to {cmd:efficiency()}
     {p_end}
-{synopt :{help robreg##ls_opts:{it:ls_options}}}fixed-effects options as for {cmd:robreg ls}
+{synopt :{help robreg##fe_opts:{it:fe_options}}}fixed-effects options
     {p_end}
 
 {syntab :Scale}
@@ -241,7 +232,7 @@
 {synopt :{cmd:m(}{varlist} [{cmd:,} {it:{help robreg##s_mopt:opts}}]{cmd:)}}variables
     to be partialled out in the subsampling algorithm
     {p_end}
-{synopt :{help robreg##ls_opts:{it:ls_options}}}fixed-effects options as for {cmd:robreg ls}
+{synopt :{help robreg##fe_opts:{it:fe_options}}}fixed-effects options
     {p_end}
 
 {syntab :Subsampling algorithm}
@@ -322,6 +313,21 @@
 {synopt :{opt alt}}use alternative nonsingular subsampling algorithm
     {p_end}
 {synopt :{opt nostd}}do not standardize the data (not recommended)
+    {p_end}
+{synoptline}
+
+
+{marker fe_opts}{col 5}{it:{help robreg##fe_options:fe_options}}{col 28}description
+{synoptline}
+{synopt :{opt i:var(varname)}}variable identifying the groups; VCE like {helpb xtreg:xtreg,fe}
+    {p_end}
+{synopt :{opt a:bsorb(varname)}}variable identifying the groups; VCE like {helpb areg}
+    {p_end}
+{synopt :[{ul:{cmd:no}}]{opt u:save}}whether to store fixed effects in {cmd:e()}
+    {p_end}
+{synopt :{opth ugen:erate(newvar)}}store fixed effects as a variable, rather than in {cmd:e()}
+    {p_end}
+{synopt :{opt replace}}allow overwriting existing variable
     {p_end}
 {synoptline}
 
@@ -486,32 +492,8 @@
 {dlgtab:Additional options for robreg ls}
 
 {phang}
-    {opt ivar(varname)} specifies a variable identifying groups for which
-    fixed effects are to be included in the model. Use 
-    {cmd:ivar()} in cases in which the number of groups increases with the
-    sample size (e.g. panel data). {cmd:ivar()} mimics
-    the behavior of {helpb xtreg:xtreg,fe} with option {cmd:robust}, that is, it
-    implies clustering on the group variable when computing standard errors (unless
-    an alternative clustering variable is specified in {cmd:vce()} or
-    {cmd:cluster()}; in any case, groups must be nested within clusters).
-
-{phang}
-    {opt absorb(varname)} is an alternative to {opt ivar()} that mimics the
-    behavior of {helpb areg} (no clustering implied; groups not required 
-    to be nested within clusters). Use {cmd:absorb()} in cases in which the number
-    of groups does not increase with the sample size. 
-
-{phang}
-    {opt nou} prevents storing a fixed-effects lookup table in matrix 
-    {cmd:e(u)}. Use this option in large panels to save memory or to prevent
-    hitting the limit for the size if a matrix.
-
-{phang}
-    {opt ugenerate(newvar)} stores the fixed effects as a variable in the data,
-    rather than storing a lookup table in {cmd:e(u)}.
-
-{phang}
-    {opt replace} allows overwriting an existing variable.
+    {it:fe_options} are options to include fixed-effects in the model; see
+    {help robreg##fe_options:Fixed effects options} below.
 
 {marker q_options}{...}
 {dlgtab:Additional options for robreg q}
@@ -570,8 +552,8 @@
     efficiency. {cmd:k()} and {cmd:efficiency()} are not both allowed.
 
 {phang}
-    {it:ls_options} are fixed-effects options as for {cmd:robreg ls}; see
-    {help robreg##ls_options:Additional options for robreg ls} above.
+    {it:fe_options} are options to include fixed-effects in the model; see
+    {help robreg##fe_options:Fixed effects options} below.
 
 {phang}
     {opt scale(#)} provides a custom (starting) value for the residual
@@ -642,8 +624,8 @@
     {cmd:m()} option).
 
 {phang}
-    {it:ls_options} are fixed-effects options as for {cmd:robreg ls}; see
-    {help robreg##ls_options:Additional options for robreg ls} above.
+    {it:fe_options} are options to include fixed-effects in the model; see
+    {help robreg##fe_options:Fixed effects options} below.
 
 {marker s_nsamp}{...}
 {phang}
@@ -875,6 +857,43 @@
 
 {phang}
     {opt nolog} suppresses the display of progress information.
+
+{marker fe_options}{...}
+{dlgtab:Fixed effects options}
+
+{phang}
+    {opt ivar(varname)} specifies a variable identifying groups for which
+    fixed effects are to be included in the model. Use 
+    {cmd:ivar()} in cases in which the number of groups increases with the
+    sample size (e.g. panel data). {cmd:ivar()} mimics
+    the behavior of {helpb xtreg:xtreg,fe} with option {cmd:robust}, that is, it
+    implies clustering on the group variable when computing standard errors (unless
+    an alternative clustering variable is specified in {cmd:vce()} or
+    {cmd:cluster()}; in any case, groups must be nested within clusters).
+
+{phang}
+    {opt absorb(varname)} is an alternative to {opt ivar()} that mimics the
+    behavior of {helpb areg} (no clustering implied; groups not required 
+    to be nested within clusters; somewhat different computation of 
+    degrees of freedom). Use {cmd:absorb()} in cases in which the number
+    of groups does not increase with the sample size. 
+
+{phang}
+    [{cmd:no}]{opt usave} decides whether a fixed-effects lookup table is stored
+    in matrix {cmd:e(u)}. For {cmd:robreg ls} the default is 
+    {cmd:nousave}, as the fixed effects can be recovered after model
+    estimation. For all other models supporting {cmd:ivar()} or 
+    {cmd:absorb()}, the default is {cmd:usave}. Typing {cmd:nousave} for these
+    models implies that {it:{help robreg##propts:predict_options}} options
+    involving fixed effects will not be available after model estimation.
+
+{phang}
+    {opt ugenerate(newvar)} stores the fixed effects as a variable in the data,
+    rather than storing a lookup table in {cmd:e(u)}. {cmd:ugenerate()} takes precedence
+    over {cmd:usave}.
+
+{phang}
+    {opt replace} allows overwriting an existing variable.
 
 {marker mm_refit_options}{...}
 {dlgtab:Refitting options for robreg mm}

@@ -28,6 +28,12 @@ Installation from GitHub:
 
 Main changes:
 
+    18sep2021 (version 2.0.8):
+    - various changes in code related to absorb()/ivar(); some of them due to
+      changes in moremata's mm_areg()
+    - -robreg ls, absorb()/ivar()- no longer saves fixed effects in e() by default
+      to save computer time and memory; type -usave- to save the fixed effects;
+      option -nou- has been renamed to -nousave-
 
     06sep2021 (version 2.0.7):
     - ivar()/absorb() option (fixed effects) now also supported by -robreg s-
