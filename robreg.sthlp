@@ -1,9 +1,8 @@
 {smcl}
-{* 18sep2021}{...}
+{* 23jun2025}{...}
 {hi:help robreg}{...}
 {right:{browse "http://github.com/benjann/robreg/"}}
 {hline}
-{p 0 0 2}
 
 {title:Title}
 
@@ -56,7 +55,9 @@
     {p_end}
 {pmore}
     The {helpb svy} prefix is allowed with {cmd:robreg ls}, {cmd:robreg q}, and {cmd:robreg m},
-    unless {cmd:ivar()} or {cmd:absorb()} is specified.
+    and in Stata 17 or newer, also with {cmd:robreg s}, {cmd:robreg mm}, and
+    {cmd:robreg lts}. Options {cmd:ivar()} or {cmd:absorb()} are not
+    supported in combination with the {helpb svy} prefix.
 
 {pstd}
     Refitting MM after {cmd:robreg s} or {cmd:robreg mm}
@@ -141,7 +142,7 @@
     {p_end}
 {synopt :{opt notab:le}}suppress table of results
     {p_end}
-{synopt :{opt all}}report results from all equations (relevant for {cmd:robreg s} and {cmd:robreg mm})
+{synopt :{opt all}}report results from all equations (relevant for {cmd:robreg s/mm/lts})
     {p_end}
 {synopt :{help robreg##displayopts:{it:display_options}}}standard
     reporting options as described in
@@ -295,6 +296,12 @@
     {p_end}
 {synopt :{opt nostd}}do not standardize the data (not recommended)
     {p_end}
+
+{syntab :VCE/SE}
+{synopt :{opt kern:el(kernel)}}kernel function{p_end}
+{synopt :{opt adapt:ive(#)}}adaptive kernel iterations{p_end}
+{synopt :{cmdab:bw:idth}{cmd:(}{help robreg##ltsbw:{it:spec}}{cmd:)}}kernel
+    bandwidth selection{p_end}
 {synoptline}
 
 
@@ -360,7 +367,7 @@
     {p_end}
 {synopt:{opt drop(names)}}coefficients to be excluded; may use {cmd:*} and {cmd:?} wildcards
     {p_end}
-{synopt :{opt f:test}}report F test rather then Wald test
+{synopt :{opt f:test}}report F test rather than Wald test
     {p_end}
 {synopt :{opt l:evel(#)}}set confidence level; default is {cmd:level(95)}
     {p_end}
@@ -739,6 +746,55 @@
     {opt naive}, {opt alt}, and {opt nostd} are described above under
     {help robreg##s_options:Additional options for robreg s}.
 
+{phang}
+    {opt kernel(kernel)} selects the kernel function used for the computation
+    of some of the components of the influence functions. {it:kernel} can be
+    {opt e:panechnikov}, {opt epan2}, {opt b:iweight}, {opt triw:eight}, {opt c:osine},
+    {opt g:aussian}, {opt p:arzen}, {opt r:ectangle} or {opt t:riangle}. The default
+    is {cmd:epan2}.
+
+{phang}
+    {opt adaptive(#)} specifies the number of iterations of the 
+    adaptive kernel. The default is {cmd:adaptive(0)} (non-adaptive kernel).
+
+{marker ltsbw}{...}
+{phang}
+    {opt bwidth(#)}, with {it:#}>0, sets the kernel bandwidth to the specified
+    value. Alternatively, use
+    {cmd:bwidth(}[{it:method}][{cmd:,} {it:subopts}]){cmd:)} to determine
+    the details of automatic bandwidth selection. Possible choices for
+    {it:method} are:
+
+{p2colset 13 28 30 2}{...}
+{p2col:{cmdab:s:ilverman}}optimal of Silverman
+    {p_end}
+{p2col:{cmdab:n:ormalscale}}normal scale rule
+    {p_end}
+{p2col:{cmdab:o:versmoothed}}oversmoothed rule
+    {p_end}
+{p2col:{opt sj:pi}}Sheather-Jones solve-the-equation plug-in
+    {p_end}
+{p2col:{cmdab:d:pi}[{cmd:(}{it:#}{cmd:)}]}Sheather-Jones direct plug-in,
+    where {it:#} specifies the number of stages of functional estimation;
+    default is {cmd:2}
+    {p_end}
+{p2col:{opt isj}}diffusion estimator bandwidth
+    {p_end}
+
+{pmore}
+    The default {it:method} is {cmd:dpi(2)}. {it:subopts} are as follows:
+
+{phang2}
+    {opt adjust(#)}, with #>0, adjusts the automatic bandwidth by factor
+    {it:#}. Default is {cmd:adjust(1)}.
+
+{phang2}
+    {opt cl:ip(#)}, with #>1, sets the factor limiting the range of
+    residuals considered during automatic bandwidth selection; the range is
+    computed as +/- sqrt(q_h) * {it:#}, where q_h is the h-quantile of squared
+    residuals. The default factor is {cmd:10}. Type {cmdab:nocl:ip} to 
+    use all residuals.
+
 {marker lqs_options}{...}
 {dlgtab:Additional options for robreg lqs/lms}
 
@@ -813,8 +869,8 @@
     {opt notable} suppresses the display of the table of results.
 
 {phang}
-    {opt all} reports results from all equations in case of {cmd:robreg s} and
-    {cmd:robreg mm}. The default is to display only the main equation.
+    {opt all} reports results from all equations in case of {cmd:robreg s},
+    {cmd:robreg mm}, and {cmd:robreg lts}. The default is to display only the main equation.
 
 {marker displayopts}{...}
 {phang}
@@ -1065,6 +1121,7 @@
         . {stata robreg m price mpg weight headroom foreign}
         . {stata robreg s price mpg weight headroom foreign}
         . {stata robreg mm price mpg weight headroom foreign}
+        . {stata robreg lts price mpg weight headroom foreign}
 
 {pstd}
     We see, for example, that the effect of {cmd:headroom} has a p-value of 0.03
@@ -1153,8 +1210,11 @@
 {synopt:{cmd:e(sum_adev)}}sum of absolute deviations ({cmd:robreg q}){p_end}
 {synopt:{cmd:e(sum_rdev)}}sum of absolute deviations of empty model ({cmd:robreg q}, unless {cmd:nor2}){p_end}
 {synopt:{cmd:e(q)}}quantile requested ({cmd:robreg q}){p_end}
-{synopt:{cmd:e(bwidth)}}bandwidth ({cmd:robreg q}){p_end}
+{synopt:{cmd:e(bwidth)}}bandwidth ({cmd:robreg q/lts}){p_end}
 {synopt:{cmd:e(kbwidth)}}kernel bandwidth ({cmd:robreg q}, unless {cmd:fitted}){p_end}
+{synopt:{cmd:e(bwadjust)}}automatic bandwidth adjustment factor ({cmd:robreg lts}){p_end}
+{synopt:{cmd:e(bwclip)}}automatic bandwidth clipping factor ({cmd:robreg lts}){p_end}
+{synopt:{cmd:e(adaptive)}}number of iterations of adaptive kernel estimator ({cmd:robreg lts}){p_end}
 {synopt:{cmd:e(iterations)}}number of iterations ({cmd:robreg q/m/mm}){p_end}
 {synopt:{cmd:e(converged)}}1 if converged, 0 else ({cmd:robreg q/m/mm}){p_end}
 {synopt:{cmd:e(hausman_chi2)}}chi-squared statistic of Hausman test ({cmd:robreg s/mm}){p_end}
@@ -1189,8 +1249,9 @@
 {synopt:{cmd:e(nor2)}}{cmd:nor2} or empty{p_end}
 {synopt:{cmd:e(noquad)}}{cmd:noquad} or empty{p_end}
 {synopt:{cmd:e(denmethod)}}{cmd:kernel} or {cmd:fitted} ({cmd:robreg q}){p_end}
-{synopt:{cmd:e(denmethod)}}{cmd:gaussian} ({cmd:robreg q}){p_end}
+{synopt:{cmd:e(kernel)}}name of kernel ({cmd:robreg q/lts}){p_end}
 {synopt:{cmd:e(bofinger)}}{cmd:bofinger} or empty ({cmd:robreg q}){p_end}
+{synopt:{cmd:e(bwmethod)}}automatic bandwidth method ({cmd:robreg lts}){p_end}
 {synopt:{cmd:e(vce)}}{it:vcetype} specified in {cmd:vce()}{p_end}
 {synopt:{cmd:e(vcetype)}}title used to label Std. Err.{p_end}
 {synopt:{cmd:e(clustvar)}}name of cluster variable{p_end}

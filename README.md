@@ -28,6 +28,12 @@ Installation from GitHub:
 
 Main changes:
 
+    23jun2025 (version 2.0.9):
+    - in Stata 17 or newer, the -svy- prefix is now also allowed with -robreg s- and
+      -robreg mm-
+    - -robreg lts- now supports variance estimation/SEs and prediction of influence
+      functions
+
     18sep2021 (version 2.0.8):
     - various changes in code related to absorb()/ivar(); some of them due to
       changes in moremata's mm_areg()
